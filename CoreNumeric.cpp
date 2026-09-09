@@ -3,6 +3,7 @@
 #include <iterator>
 #include <vector>
 #include <string>
+#include <type_traits>
 using namespace std;
 
 //Iterable
@@ -98,8 +99,55 @@ namespace core_numeric {
             result += f(value) ;
         return result ;
     }
-}
+    template < typename... Args >
+    requires (Addable<Args> && ...)
+    auto sum_variadic ( Args... args ) {
+        return ( args + ... ); // fold expression
+    }
 
+    // mean_variadic: reutiliza sum_variadic (igual que mean reutiliza sum).
+    // Requerimiento 7: usa if constexpr para diferenciar el comportamiento
+    // entre tipos enteros y tipos flotantes en tiempo de compilacion.
+    template < typename... Args >
+    requires (Addable<Args> && ...)
+    auto mean_variadic ( Args... args ) {
+        using T = std::common_type_t<Args...>;
+        constexpr std::size_t n = sizeof...(args);
+        auto total = sum_variadic ( args... );
+
+        if constexpr ( std::is_integral_v<T> ) {
+            // Caso enteros: division entera, se trunca el resultado.
+            return static_cast<T>(total) / static_cast<T>(n);
+        } else {
+            // Caso flotantes: division exacta.
+            return static_cast<T>(total) / static_cast<T>(n);
+        }
+    }
+
+    // variance_variadic: reutiliza mean_variadic (igual que variance reutiliza mean).
+    // Ademas de Addable, exige el concept propio Multipliable sobre el tipo
+    // comun de los argumentos (se usa para elevar al cuadrado cada desviacion).
+    template < typename... Args >
+    requires (Addable<Args> && ...) && Multipliable<std::common_type_t<Args...>>
+    auto variance_variadic ( Args... args ) {
+        using T = std::common_type_t<Args...>;
+        T prom = static_cast<T>( mean_variadic ( args... ) );
+        // Fold expression: suma de (xi - prom)^2 para cada argumento
+        auto sumatoria = ( ( ( static_cast<T>(args) - prom ) * ( static_cast<T>(args) - prom ) ) + ... );
+        return sumatoria / static_cast<T>( sizeof...(args) );
+    }
+
+    // max_variadic: usa el concept Comparable y una fold expression (comma-fold)
+    // que va comparando y actualizando el maximo con cada argumento.
+    template < typename First, typename... Rest >
+    requires Comparable<std::common_type_t<First, Rest...>>
+    auto max_variadic ( First first, Rest... rest ) {
+        using T = std::common_type_t<First, Rest...>;
+        T resultado = static_cast<T>(first);
+        ( ( resultado = ( static_cast<T>(rest) > resultado ? static_cast<T>(rest) : resultado ) ), ... );
+        return resultado;
+    }
+}
 int main() {
     std::vector<double> v {2.0, 3.0, 4.0};
     auto r = core_numeric::transform_reduce(v, [](double x) {
